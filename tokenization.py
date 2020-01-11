@@ -193,7 +193,7 @@ def printable_text(text):
 def load_vocab(vocab_file):
   """Loads a vocabulary file into a dictionary."""
   vocab = collections.OrderedDict()
-  with tf.gfile.GFile(vocab_file, "r") as reader:
+  with open(vocab_file, "r", encoding='utf-8') as reader:
     while True:
       token = convert_to_unicode(reader.readline())
       if not token:
@@ -227,6 +227,62 @@ def whitespace_tokenize(text):
     return []
   tokens = text.split()
   return tokens
+
+
+class CharTokenizer(object):
+  """Runs end-to-end tokenziation faster for Chinese."""
+
+  def __init__(self, vocab_file, do_lower_case=True, unk_token="[UNK]"):
+    self.unk_token = unk_token
+    self.do_lower_case = do_lower_case
+    self.vocab = load_vocab(vocab_file)
+    self.unk_token_id = self.vocab[self.unk_token]
+    self.inv_vocab = {v: k for k, v in self.vocab.items()}
+
+  def tokenize(self, text):
+    text = convert_to_unicode(text)
+    if self.do_lower_case:
+      tokens = [char.lower() for char in text if not _is_skippable(char)]
+    else:
+      tokens = [char         for char in text if not _is_skippable(char)]
+    return tokens
+
+  def convert_tokens_to_ids(self, tokens):
+    return [self.vocab.get(token, self.unk_token_id) for token in tokens]
+
+  def convert_ids_to_tokens(self, ids):
+    return convert_by_vocab(self.inv_vocab, ids)
+
+
+class ChineseTokenizer(object):
+  """Runs end-to-end tokenziation faster for Chinese."""
+
+  def __init__(self, vocab_file, do_lower_case=True, unk_token="[UNK]"):
+    self.unk_token = unk_token
+    self.do_lower_case = do_lower_case
+    self.vocab = load_vocab(vocab_file)
+    self.inv_vocab = {v: k for k, v in self.vocab.items()}
+
+  def tokenize(self, text):
+    text = convert_to_unicode(text)
+    text = self._tokenize_chinese_chars(text)
+    output_tokens = whitespace_tokenize(text)
+    return output_tokens
+
+  def _tokenize_chinese_chars(self, text):
+    """Adds whitespace around any CJK character."""
+    output = []
+    for char in text:
+      cp = ord(char)
+      if _is_chinese_char(cp) or _is_punctuation(char):
+        output.append(" ")
+        output.append(char)
+        output.append(" ")
+      elif _is_skippable(char):
+        output.append(" ")
+      else:
+        output.append(char)
+    return "".join(output)
 
 
 class FullTokenizer(object):
@@ -509,4 +565,46 @@ def _is_punctuation(char):
   cat = unicodedata.category(char)
   if cat.startswith("P"):
     return True
+  return False
+
+
+def _is_chinese_char(cp):
+    """Checks whether CP is the codepoint of a CJK character."""
+    # This defines a "chinese character" as anything in the CJK Unicode block:
+    #   https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block)
+    #
+    # Note that the CJK Unicode block is NOT all Japanese and Korean characters,
+    # despite its name. The modern Korean Hangul alphabet is a different block,
+    # as is Japanese Hiragana and Katakana. Those alphabets are used to write
+    # space-separated words, so they are not treated specially and handled
+    # like the all of the other languages.
+    if ((cp >= 0x4E00 and cp <= 0x9FFF) or  #
+        (cp >= 0x3400 and cp <= 0x4DBF) or  #
+        (cp >= 0x20000 and cp <= 0x2A6DF) or  #
+        (cp >= 0x2A700 and cp <= 0x2B73F) or  #
+        (cp >= 0x2B740 and cp <= 0x2B81F) or  #
+        (cp >= 0x2B820 and cp <= 0x2CEAF) or
+        (cp >= 0xF900 and cp <= 0xFAFF) or  #
+        (cp >= 0x2F800 and cp <= 0x2FA1F)):  #
+      return True
+
+    return False
+
+
+def _is_skippable(char):
+  """ Check whether 'char' is skippable. """
+  # In general we skip whitespace.
+  # \t, \n, and \r are technically contorl characters but we treat them
+  # as whitespace since they are generally considered as such.
+  # if char == " " or char == "\t" or char == "\n" or char == "\r":
+  if not char.strip():
+    return True
+  # "Cc", "Cf" categaries are technically control characters 
+  # but we count them as whitespace characters.
+  if unicodedata.category(char) in ("Cc", "Cf", "Zs"):
+    return True
+  cp = ord(char)
+  if cp == 0 or cp == 0xfffd: # �
+    return True
+
   return False
