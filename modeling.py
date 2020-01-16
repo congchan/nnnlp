@@ -7,6 +7,46 @@ from six.moves import range
 import tensorflow as tf
 
 
+def crf_layer(inputs, tag_indices, num_labels, true_sequence_lengths, 
+    transitions_name="transitions", inference_only=False):
+  """ Performs tensorflow crf decoding.
+  Args:
+    inputs: A [batch_size, max_seq_len, num_tags] tensor of unary 
+        potentials to use as input to the CRF layer.
+    tag_indices: A [batch_size, max_seq_len] matrix of tag indices 
+        for which we compute the log-likelihood.
+    num_labels: A int number indicates the number of possible tags.
+    true_sequence_lengths: A [batch_size] vector of true sequence lengths.
+  Returns:
+    per_example_loss: A [batch_size] Tensor containing the negative
+        log-likelihood of each example, given the sequence of tag indices.
+    predictions: A [batch_size, max_seq_len] CRF decode_tags represent 
+        the most probable tags sequence.
+    best_score: A [batch_size] vector, containing the score of decode_tags.
+  """
+  with tf.variable_scope('crf'):
+    transition_params = tf.get_variable(
+        transitions_name,
+        shape=[num_labels, num_labels],
+        initializer=tf.zeros_initializer())
+  per_example_loss = None
+  if not inference_only:
+    log_likelihood, transition_params = tf.contrib.crf.crf_log_likelihood(
+        inputs=inputs,
+        tag_indices=tag_indices,
+        transition_params=transition_params,
+        sequence_lengths=true_sequence_lengths)
+    per_example_loss = -log_likelihood
+  # NOTE CRF decode, decode_tags [batch_size, max_seq_len] most probable path
+  decode_tags, best_score = tf.contrib.crf.crf_decode(potentials=inputs,
+      transition_params=transition_params,
+      # NOTE sequence_length: [batch_size] vector of true sequence lengths.
+      sequence_length=true_sequence_lengths)
+  # A [batch_size] Tensor containing the -log_likelihood of each example
+  predictions = decode_tags
+  return per_example_loss, predictions, best_score
+
+
 def create_initializer(initializer_range=0.02):
   """Creates a `truncated_normal_initializer` with the given range."""
   return tf.truncated_normal_initializer(stddev=initializer_range)
