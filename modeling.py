@@ -47,6 +47,39 @@ def crf_layer(inputs, tag_indices, num_labels, true_sequence_lengths,
   return per_example_loss, predictions, best_score
 
 
+def softmax(logits, labels, num_classes, mask=None):
+  """ Perform softmax operation
+  Args:
+    logits: Logits outputs of the network, last dimension should be num_classes, 
+        ie.. [batch_size, seq_length ?, num_classes];
+    labels: A [batch_size, seq_length ?] tensor represent true label ids.
+    mask: mask should be the same shape as logits.
+  Return:
+    per_example_loss, a [batch_size] tensor containing the cross_entropy loss.
+  """
+  # # shape: batch x features_tokens x depth if axis==-1, same shape as logits
+  one_hot_labels = tf.one_hot(labels, depth=num_classes, dtype=tf.float32)
+  # # shape: batch x features_tokens
+  # per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, 
+  #     labels=one_hot_labels)
+      
+  # An alternative way, less efficient, but allow self-define mask
+  log_probs = tf.nn.log_softmax(logits, axis=-1) # NOTE same shape as logits
+  # NOTE shape (batch_size, max_seq_len, depth)
+  per_token_loss = one_hot_labels * log_probs
+
+  if mask is not None:
+    mask = tf.cast(mask, tf.float32)
+    per_token_loss = tf.einsum("BFH,BF->BFH", per_token_loss, mask)
+
+  per_example_loss = -tf.reduce_sum(per_token_loss, axis=-1)
+
+  probabilities = tf.nn.softmax(logits, axis=-1) # NOTE same shape as logits
+  predictions = tf.argmax(probabilities, axis=-1, output_type=tf.int64)
+
+  return per_example_loss, predictions
+
+
 def create_initializer(initializer_range=0.02):
   """Creates a `truncated_normal_initializer` with the given range."""
   return tf.truncated_normal_initializer(stddev=initializer_range)
