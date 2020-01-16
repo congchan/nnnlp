@@ -80,6 +80,36 @@ def softmax(logits, labels, num_classes, mask=None):
   return per_example_loss, predictions
 
 
+def bilstm_fused(inputs, lengths, lstm_size, bilstm_dropout_rate, 
+    is_training, num_layers=1):
+  """ FusedRNNCell implementation of LSTM is an extremely efficient LSTM implementation, 
+      that uses a single TF op for the entire LSTM. 
+      It should be both faster and more memory-efficient than LSTMBlockCell.
+  """ 
+  def _bi_lstm_fused(inputs, lengths, rnn_size, is_training, dropout_rate=0.5, 
+                    scope='bi-lstm-fused'):
+    with tf.variable_scope(scope):
+      inputs = tf.transpose(inputs, perm=[1, 0, 2])  # Need time-major
+      lstm_cell_fw = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
+      lstm_cell_bw = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
+      lstm_cell_bw = tf.contrib.rnn.TimeReversedFusedRNN(lstm_cell_bw)
+      output_fw, _ = lstm_cell_fw(inputs, dtype=tf.float32, sequence_length=lengths)
+      output_bw, _ = lstm_cell_bw(inputs, dtype=tf.float32, sequence_length=lengths)
+      outputs = tf.concat([output_fw, output_bw], axis=-1)
+      outputs = tf.transpose(outputs, perm=[1, 0, 2])
+      outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=is_training)
+      return outputs
+
+  rnn_output = tf.identity(inputs)
+  for i in range(num_layers):
+    scope = 'bi-lstm-fused-%s' % i
+    rnn_output = _bi_lstm_fused(rnn_output, lengths, rnn_size=lstm_size,
+                                is_training=is_training,
+                                dropout_rate=bilstm_dropout_rate,
+                                scope=scope)  # (batch_size, seq_length, 2*rnn_size)
+  return rnn_output
+
+
 def create_initializer(initializer_range=0.02):
   """Creates a `truncated_normal_initializer` with the given range."""
   return tf.truncated_normal_initializer(stddev=initializer_range)
