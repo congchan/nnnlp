@@ -435,6 +435,84 @@ def attention_layer(from_tensor,
   return tf.transpose(new_embeddings, [0, 2, 1, 3])
 
 
+def attention_ffn_block(layer_input,
+                        hidden_size=768,
+                        attention_mask=None,
+                        num_attention_heads=1,
+                        attention_head_size=64,
+                        attention_probs_dropout_prob=0.0,
+                        intermediate_size=3072,
+                        intermediate_act_fn=None,
+                        initializer_range=0.02,
+                        hidden_dropout_prob=0.0):
+  """A network with attention-ffn as sub-block.
+
+  Args:
+    layer_input: float Tensor of shape [batch_size, from_seq_length,
+      from_width].
+    hidden_size: (optional) int, size of hidden layer.
+    attention_mask: (optional) int32 Tensor of shape [batch_size,
+      from_seq_length, to_seq_length]. The values should be 1 or 0. The
+      attention scores will effectively be set to -infinity for any positions in
+      the mask that are 0, and will be unchanged for positions that are 1.
+    num_attention_heads: int. Number of attention heads.
+    attention_head_size: int. Size of attention head.
+    attention_probs_dropout_prob: float. dropout probability for attention_layer
+    intermediate_size: int. Size of intermediate hidden layer.
+    intermediate_act_fn: (optional) Activation function for the intermediate
+      layer.
+    initializer_range: float. Range of the weight initializer.
+    hidden_dropout_prob: (optional) float. Dropout probability of the hidden
+      layer.
+
+  Returns:
+    layer output
+  """
+
+  with tf.variable_scope("attention_1"):
+    with tf.variable_scope("self"):
+      attention_output = attention_layer(
+          from_tensor=layer_input,
+          to_tensor=layer_input,
+          attention_mask=attention_mask,
+          num_attention_heads=num_attention_heads,
+          attention_probs_dropout_prob=attention_probs_dropout_prob,
+          initializer_range=initializer_range)
+
+    # Run a linear projection of `hidden_size` then add a residual
+    # with `layer_input`.
+    with tf.variable_scope("output"):
+      attention_output = dense_layer_3d_proj(
+          attention_output,
+          hidden_size,
+          attention_head_size,
+          create_initializer(initializer_range),
+          None,
+          name="dense")
+      attention_output = dropout(attention_output, hidden_dropout_prob)
+  attention_output = layer_norm(attention_output + layer_input)
+  with tf.variable_scope("ffn_1"):
+    with tf.variable_scope("intermediate"):
+      intermediate_output = dense_layer_2d(
+          attention_output,
+          intermediate_size,
+          create_initializer(initializer_range),
+          intermediate_act_fn,
+          num_attention_heads=num_attention_heads,
+          name="dense")
+      with tf.variable_scope("output"):
+        ffn_output = dense_layer_2d(
+            intermediate_output,
+            hidden_size,
+            create_initializer(initializer_range),
+            None,
+            num_attention_heads=num_attention_heads,
+            name="dense")
+      ffn_output = dropout(ffn_output, hidden_dropout_prob)
+  ffn_output = layer_norm(ffn_output + attention_output)
+  return ffn_output
+
+
 def get_shape_list(tensor, expected_rank=None, name=None):
   """Returns a list of the shape of tensor, preferring static dimensions.
   Args:
