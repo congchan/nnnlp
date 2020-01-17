@@ -143,6 +143,64 @@ def bilstm_fused(inputs, lengths, lstm_size, bilstm_dropout_rate,
   return rnn_output
 
 
+def cudnn_rnn(input_ids, sequence_lengths, time_major=False,
+    num_layers=1, dropout=0.0, rnn_size=128, is_training=True,
+    cell_type='lstm', CUDNN_RNN_UNIDIRECTION='unidirectional'):
+  """ cudnn_lstm/gru/rnn for id tensor.
+  Args:
+    input_ids: int32 Tensor of shape [batch_size, seq_length] containing word
+        ids.
+    sequence_lengths: an int32 array representing the variable sequence
+        lengths in a batch. The size of the array has to equal the batch_size.
+        If not provided, the same sequence length will be assumed.
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If
+        true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
+        If false, these Tensors must be shaped ['batch_size', 'max_time',
+        'depth']. By default this function accepts input and emits output in
+        time-major form. This param is only effective when 'sequence_lengths' is
+        used.
+    training: whether this operation will be used in training or inference.
+  Returns:
+      output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`
+        if `time_major` is True (default) or `[batch_size, time_len,
+        num_dirs * num_units]` if `time_major` is False.
+        It is a `concat([fwd_output, bak_output], axis=2)`.
+      output_states: a tuple of tensor(s) of the same shape and structure as
+        `initial_state`.
+  """
+  # If the input is a 2D tensor of shape [batch_size, seq_length], we
+  # reshape to [batch_size, seq_length, 1].
+  if input_ids.shape.ndims == 2:
+      input_ids = tf.expand_dims(input_ids, axis=[-1])
+  model_dic = {
+      'lstm': tf.contrib.cudnn_rnn.CudnnLSTM,
+      'gru': tf.contrib.cudnn_rnn.CudnnGRU,
+      'rnn_relu': tf.contrib.cudnn_rnn.CudnnRNNRelu,
+      'rnn_tanh': tf.contrib.cudnn_rnn.CudnnRNNTanh,
+  }
+  model = model_dic[cell_type]
+  fn = model(
+      num_layers=num_layers,
+      num_units=rnn_size,
+      # input_mode=CUDNN_INPUT_LINEAR_MODE,
+      direction=CUDNN_RNN_UNIDIRECTION,
+      dropout=dropout,
+      # seed=None,
+      # dtype=tf.dtypes.float32,
+      # kernel_initializer=None,
+      # bias_initializer=None,
+      # name=None
+      )
+  outputs, output_states = fn(
+      inputs=input_ids,
+      initial_state=None,
+      sequence_lengths=sequence_lengths,
+      time_major=time_major,
+      training=is_training,)
+
+  return outputs, output_states
+
+
 def create_initializer(initializer_range=0.02):
   """Creates a `truncated_normal_initializer` with the given range."""
   return tf.truncated_normal_initializer(stddev=initializer_range)
