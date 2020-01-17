@@ -80,6 +80,39 @@ def softmax(logits, labels, num_classes, mask=None):
   return per_example_loss, predictions
 
 
+def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate, 
+    is_training, num_layers=1):
+  """ FusedRNNCell
+  Args:
+      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`
+      sequence_length: Specifies the length of each sequence in inputs. An
+        `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
+        time_len)` or None.
+  Returns:
+      Cell state (cs): A `3-D` tensor of shape `[time_len, batch_size,
+                         output_size]`
+  """
+  def _lstm_fused(inputs, lengths, lstm_size, is_training, dropout_rate=0.5, 
+                    scope='lstm-fused'):
+    with tf.variable_scope(scope):
+      inputs = tf.transpose(inputs, perm=[1, 0, 2])  # Need time-major
+      lstm_cell = tf.contrib.rnn.LSTMBlockFusedCell(lstm_size)
+      output, _ = lstm_cell(inputs, dtype=tf.float32, 
+                            sequence_length=sequence_length)
+      outputs = tf.transpose(outputs, perm=[1, 0, 2])
+      outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=is_training)
+      return outputs
+
+  rnn_output = tf.identity(inputs)
+  for i in range(num_layers):
+    scope = 'lstm-fused-%s' % i
+    rnn_output = _lstm_fused(rnn_output, lengths, lstm_size=lstm_size,
+                                is_training=is_training,
+                                dropout_rate=bilstm_dropout_rate,
+                                scope=scope)  # (batch_size, seq_length, 2*rnn_size)
+  return rnn_output
+
+
 def bilstm_fused(inputs, lengths, lstm_size, bilstm_dropout_rate, 
     is_training, num_layers=1):
   """ FusedRNNCell implementation of LSTM is an extremely efficient LSTM implementation, 
