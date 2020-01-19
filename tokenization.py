@@ -25,9 +25,7 @@ import re
 import unicodedata
 import six
 from six.moves import range
-import tensorflow.compat.v1 as tf
-import tensorflow_hub as hub
-import sentencepiece as spm
+import tensorflow as tf
 
 SPIECE_UNDERLINE = u"▁".encode("utf-8")
 
@@ -198,7 +196,7 @@ def load_vocab(vocab_file):
       token = convert_to_unicode(reader.readline())
       if not token:
         break
-      token = token.strip().split()[0]
+      token = token.strip()
       if token not in vocab:
         vocab[token] = len(vocab)
   return vocab
@@ -288,67 +286,25 @@ class ChineseTokenizer(object):
 class FullTokenizer(object):
   """Runs end-to-end tokenziation."""
 
-  def __init__(self, vocab_file, do_lower_case=True, spm_model_file=None):
-    self.vocab = None
-    self.sp_model = None
-    if spm_model_file:
-      self.sp_model = spm.SentencePieceProcessor()
-      tf.logging.info("loading sentence piece model")
-      self.sp_model.Load(spm_model_file)
-      # Note(mingdachen): For the purpose of consisent API, we are
-      # generating a vocabulary for the sentence piece tokenizer.
-      self.vocab = {self.sp_model.IdToPiece(i): i for i
-                    in range(self.sp_model.GetPieceSize())}
-    else:
-      self.vocab = load_vocab(vocab_file)
-      self.basic_tokenizer = BasicTokenizer(do_lower_case=do_lower_case)
-      self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab)
+  def __init__(self, vocab_file, do_lower_case=True):
+    self.vocab = load_vocab(vocab_file)
     self.inv_vocab = {v: k for k, v in self.vocab.items()}
-
-  @classmethod
-  def from_scratch(cls, vocab_file, do_lower_case, spm_model_file):
-    return FullTokenizer(vocab_file, do_lower_case, spm_model_file)
-
-  @classmethod
-  def from_hub_module(cls, hub_module, spm_model_file):
-    """Get the vocab file and casing info from the Hub module."""
-    with tf.Graph().as_default():
-      albert_module = hub.Module(hub_module)
-      tokenization_info = albert_module(signature="tokenization_info",
-                                        as_dict=True)
-      with tf.Session() as sess:
-        vocab_file, do_lower_case = sess.run(
-            [tokenization_info["vocab_file"],
-             tokenization_info["do_lower_case"]])
-    return FullTokenizer(
-        vocab_file=vocab_file, do_lower_case=do_lower_case,
-        spm_model_file=spm_model_file)
+    self.basic_tokenizer = BasicTokenizer(do_lower_case=do_lower_case)
+    self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab)
 
   def tokenize(self, text):
-    if self.sp_model:
-      split_tokens = encode_pieces(self.sp_model, text, return_unicode=False)
-    else:
-      split_tokens = []
-      for token in self.basic_tokenizer.tokenize(text):
-        for sub_token in self.wordpiece_tokenizer.tokenize(token):
-          split_tokens.append(sub_token)
+    split_tokens = []
+    for token in self.basic_tokenizer.tokenize(text):
+      for sub_token in self.wordpiece_tokenizer.tokenize(token):
+        split_tokens.append(sub_token)
 
     return split_tokens
 
   def convert_tokens_to_ids(self, tokens):
-    if self.sp_model:
-      tf.logging.info("using sentence piece tokenzier.")
-      return [self.sp_model.PieceToId(
-          printable_text(token)) for token in tokens]
-    else:
-      return convert_by_vocab(self.vocab, tokens)
+    return convert_by_vocab(self.vocab, tokens)
 
   def convert_ids_to_tokens(self, ids):
-    if self.sp_model:
-      tf.logging.info("using sentence piece tokenzier.")
-      return [self.sp_model.IdToPiece(id_) for id_ in ids]
-    else:
-      return convert_by_vocab(self.inv_vocab, ids)
+    return convert_by_vocab(self.inv_vocab, ids)
 
 
 class BasicTokenizer(object):
@@ -510,7 +466,7 @@ class WordpieceTokenizer(object):
         while start < end:
           substr = "".join(chars[start:end])
           if start > 0:
-            substr = "##" + six.ensure_str(substr)
+            substr = "##" + substr
           if substr in self.vocab:
             cur_substr = substr
             break
