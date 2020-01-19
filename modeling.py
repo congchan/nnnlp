@@ -604,6 +604,96 @@ def attention_ffn_block(layer_input,
   return ffn_output
 
 
+def transformer_model(input_tensor,
+                      attention_mask=None,
+                      hidden_size=768,
+                      num_hidden_layers=12,
+                      num_hidden_groups=12,
+                      num_attention_heads=12,
+                      intermediate_size=3072,
+                      inner_group_num=1,
+                      intermediate_act_fn="gelu",
+                      hidden_dropout_prob=0.1,
+                      attention_probs_dropout_prob=0.1,
+                      initializer_range=0.02,
+                      do_return_all_layers=False):
+  """Multi-headed, multi-layer Transformer from "Attention is All You Need".
+
+  This is almost an exact implementation of the original Transformer encoder.
+
+  See the original paper:
+  https://arxiv.org/abs/1706.03762
+
+  Also see:
+  https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/models/transformer.py
+
+  Args:
+    input_tensor: float Tensor of shape [batch_size, seq_length, hidden_size].
+    attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length,
+      seq_length], with 1 for positions that can be attended to and 0 in
+      positions that should not be.
+    hidden_size: int. Hidden size of the Transformer.
+    num_hidden_layers: int. Number of layers (blocks) in the Transformer.
+    num_hidden_groups: int. Number of group for the hidden layers, parameters
+      in the same group are shared.
+    num_attention_heads: int. Number of attention heads in the Transformer.
+    intermediate_size: int. The size of the "intermediate" (a.k.a., feed
+      forward) layer.
+    inner_group_num: int, number of inner repetition of attention and ffn.
+    intermediate_act_fn: function. The non-linear activation function to apply
+      to the output of the intermediate/feed-forward layer.
+    hidden_dropout_prob: float. Dropout probability for the hidden layers.
+    attention_probs_dropout_prob: float. Dropout probability of the attention
+      probabilities.
+    initializer_range: float. Range of the initializer (stddev of truncated
+      normal).
+    do_return_all_layers: Whether to also return all layers or just the final
+      layer.
+
+  Returns:
+    float Tensor of shape [batch_size, seq_length, hidden_size], the final
+    hidden layer of the Transformer.
+
+  Raises:
+    ValueError: A Tensor shape or parameter is invalid.
+  """
+  if hidden_size % num_attention_heads != 0:
+    raise ValueError(
+        "The hidden size (%d) is not a multiple of the number of attention "
+        "heads (%d)" % (hidden_size, num_attention_heads))
+
+  attention_head_size = hidden_size // num_attention_heads
+  input_shape = get_shape_list(input_tensor, expected_rank=3)
+  input_width = input_shape[2]
+
+  all_layer_outputs = []
+  if input_width != hidden_size:
+    prev_output = dense_layer_2d(
+        input_tensor, hidden_size, create_initializer(initializer_range),
+        None, name="embedding_hidden_mapping_in")
+  else:
+    prev_output = input_tensor
+  with tf.variable_scope("transformer", reuse=tf.AUTO_REUSE):
+    for layer_idx in range(num_hidden_layers):
+      group_idx = int(layer_idx / num_hidden_layers * num_hidden_groups)
+      with tf.variable_scope("group_%d" % group_idx):
+        with tf.name_scope("layer_%d" % layer_idx):
+          layer_output = prev_output
+          for inner_group_idx in range(inner_group_num):
+            with tf.variable_scope("inner_group_%d" % inner_group_idx):
+              layer_output = attention_ffn_block(
+                  layer_output, hidden_size, attention_mask,
+                  num_attention_heads, attention_head_size,
+                  attention_probs_dropout_prob, intermediate_size,
+                  intermediate_act_fn, initializer_range, hidden_dropout_prob)
+              prev_output = layer_output
+              all_layer_outputs.append(layer_output)
+  if do_return_all_layers:
+    return all_layer_outputs
+  else:
+    return all_layer_outputs[-1]
+
+
 def get_shape_list(tensor, expected_rank=None, name=None):
   """Returns a list of the shape of tensor, preferring static dimensions.
   Args:
@@ -692,4 +782,3 @@ def assert_rank(tensor, expected_rank, name=None):
         "For the tensor `%s` in scope `%s`, the actual rank "
         "`%d` (shape = %s) is not equal to the expected rank `%s`" %
         (name, scope_name, actual_rank, str(tensor.shape), str(expected_rank)))
-
