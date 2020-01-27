@@ -345,21 +345,20 @@ def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate,
   return rnn_output
 
 
-def bilstm_fused(inputs, lengths, lstm_size, bilstm_dropout_rate, 
+def bilstm_fused(inputs, sequence_lengths, lstm_size, bilstm_dropout_rate, 
     is_training, num_layers=1):
-  """ FusedRNNCell implementation of LSTM is an extremely efficient LSTM implementation, 
-      that uses a single TF op for the entire LSTM. 
-      It should be both faster and more memory-efficient than LSTMBlockCell.
-  """ 
-  def _bi_lstm_fused(inputs, lengths, rnn_size, is_training, dropout_rate=0.5, 
-                    scope='bi-lstm-fused'):
+  """ FusedRNNCell uses a single TF op for the entire LSTM. """ 
+  def _bi_lstm_fused(inputs, sequence_lengths, rnn_size, is_training, 
+                    dropout_rate=0.5, scope='bi-lstm-fused'):
     with tf.variable_scope(scope):
       inputs = tf.transpose(inputs, perm=[1, 0, 2])  # Need time-major
       lstm_cell_fw = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
       lstm_cell_bw = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
       lstm_cell_bw = tf.contrib.rnn.TimeReversedFusedRNN(lstm_cell_bw)
-      output_fw, _ = lstm_cell_fw(inputs, dtype=tf.float32, sequence_length=lengths)
-      output_bw, _ = lstm_cell_bw(inputs, dtype=tf.float32, sequence_length=lengths)
+      output_fw, _ = lstm_cell_fw(inputs, dtype=tf.float32, 
+          sequence_length=sequence_lengths)
+      output_bw, _ = lstm_cell_bw(inputs, dtype=tf.float32, 
+          sequence_length=sequence_lengths)
       outputs = tf.concat([output_fw, output_bw], axis=-1)
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
       outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=is_training)
@@ -368,19 +367,19 @@ def bilstm_fused(inputs, lengths, lstm_size, bilstm_dropout_rate,
   rnn_output = tf.identity(inputs)
   for i in range(num_layers):
     scope = 'bi-lstm-fused-%s' % i
-    rnn_output = _bi_lstm_fused(rnn_output, lengths, rnn_size=lstm_size,
+    rnn_output = _bi_lstm_fused(rnn_output, sequence_lengths, rnn_size=lstm_size,
                                 is_training=is_training,
                                 dropout_rate=bilstm_dropout_rate,
                                 scope=scope)  # (batch_size, seq_length, 2*rnn_size)
   return rnn_output
 
 
-def cudnn_rnn(input_ids, sequence_lengths, time_major=False,
+def cudnn_rnn(inputs, sequence_lengths, time_major=False,
     num_layers=1, dropout=0.0, rnn_size=128, is_training=True,
-    cell_type='lstm', CUDNN_RNN_UNIDIRECTION='unidirectional'):
+    cell_type='lstm', direction='unidirectional'):
   """ cudnn_lstm/gru/rnn for id tensor.
   Args:
-    input_ids: int32 Tensor of shape [batch_size, seq_length] containing word
+    inputs: int32 Tensor of shape [batch_size, seq_length] containing word
         ids.
     sequence_lengths: an int32 array representing the variable sequence
         lengths in a batch. The size of the array has to equal the batch_size.
@@ -392,6 +391,8 @@ def cudnn_rnn(input_ids, sequence_lengths, time_major=False,
         time-major form. This param is only effective when 'sequence_lengths' is
         used.
     training: whether this operation will be used in training or inference.
+    direction: the direction model that the model operates. 
+        Can be either 'unidirectional' or 'bidirectional'
   Returns:
       output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`
         if `time_major` is True (default) or `[batch_size, time_len,
@@ -402,8 +403,8 @@ def cudnn_rnn(input_ids, sequence_lengths, time_major=False,
   """
   # If the input is a 2D tensor of shape [batch_size, seq_length], we
   # reshape to [batch_size, seq_length, 1].
-  if input_ids.shape.ndims == 2:
-      input_ids = tf.expand_dims(input_ids, axis=[-1])
+  if inputs.shape.ndims == 2:
+      inputs = tf.expand_dims(inputs, axis=[-1])
   model_dic = {
       'lstm': tf.contrib.cudnn_rnn.CudnnLSTM,
       'gru': tf.contrib.cudnn_rnn.CudnnGRU,
@@ -415,7 +416,7 @@ def cudnn_rnn(input_ids, sequence_lengths, time_major=False,
       num_layers=num_layers,
       num_units=rnn_size,
       # input_mode=CUDNN_INPUT_LINEAR_MODE,
-      direction=CUDNN_RNN_UNIDIRECTION,
+      direction=direction,
       dropout=dropout,
       # seed=None,
       # dtype=tf.dtypes.float32,
@@ -424,8 +425,8 @@ def cudnn_rnn(input_ids, sequence_lengths, time_major=False,
       # name=None
       )
   outputs, output_states = fn(
-      inputs=input_ids,
-      initial_state=None,
+      inputs=inputs,
+      # initial_state=None,
       sequence_lengths=sequence_lengths,
       time_major=time_major,
       training=is_training,)
