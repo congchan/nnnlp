@@ -257,7 +257,7 @@ def create_model(config, is_training, input_ids, input_mask, segment_ids,
   with tf.variable_scope("bilstm"):
     sequence_output = modeling.bilstm_fused(
       inputs=embedding_output, 
-      lengths=_true_length, 
+      sequence_lengths=_true_length, 
       lstm_size=config.lstm_size,
       bilstm_dropout_rate=config.bilstm_dropout_rate, 
       is_training=is_training,
