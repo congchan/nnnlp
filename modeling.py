@@ -300,7 +300,7 @@ def softmax(logits, labels, num_classes, mask=None):
   # NOTE shape (batch_size, max_seq_len, depth)
   per_token_loss = one_hot_labels * log_probs
 
-  if mask is not None:
+  if mask is not None and len(per_token_loss.shape.as_list()) > 2:
     mask = tf.cast(mask, tf.float32)
     per_token_loss = tf.einsum("BFH,BF->BFH", per_token_loss, mask)
 
