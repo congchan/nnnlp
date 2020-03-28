@@ -459,6 +459,39 @@ def create_initializer(initializer_range=0.02):
   return tf.truncated_normal_initializer(stddev=initializer_range)
 
 
+def einsum_via_matmul(input_tensor, w, num_inner_dims):
+  """Implements einsum via matmul and reshape ops.
+  to perform tf.einsum("BFH,HO->BFO", input_tensor, w),
+    call einsum_via_matmul(input_tensor, w, 1), 
+      which is equivalent to tf.matmul(input_tensor, w)
+  but to perform tf.einsum("BFH,HND->BFND", input_tensor, w),
+    call einsum_via_matmul(input_tensor, w, 1)
+  tf.einsum("BFND,NDH->BFH", input_tensor, w),
+    call einsum_via_matmul(input_tensor, w, 2)
+  Args:
+    input_tensor: float Tensor of shape [<batch_dims>, <inner_dims>].
+    w: float Tensor of shape [<inner_dims>, <outer_dims>].
+    num_inner_dims: int. number of dimensions to use for inner products.
+  Returns:
+    float Tensor of shape [<batch_dims>, <outer_dims>].
+  """
+  input_shape = get_shape_list(input_tensor)
+  w_shape = get_shape_list(w)
+  batch_dims = input_shape[: -num_inner_dims]
+  inner_dims = input_shape[-num_inner_dims:]
+  outer_dims = w_shape[num_inner_dims:]
+  inner_dim = np.prod(inner_dims)
+  outer_dim = np.prod(outer_dims)
+  if num_inner_dims > 1:
+    input_tensor = tf.reshape(input_tensor, batch_dims + [inner_dim])
+  if len(w_shape) > 2:
+    w = tf.reshape(w, [inner_dim, outer_dim])
+  ret = tf.matmul(input_tensor, w)
+  if len(outer_dims) > 1:
+    ret = tf.reshape(ret, batch_dims + outer_dims)
+  return ret
+
+
 def dropout(input_tensor, dropout_prob):
   """Perform dropout.
   Args:
