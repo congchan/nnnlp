@@ -312,6 +312,26 @@ def softmax(logits, labels, num_classes, mask=None):
   return per_example_loss, predictions
 
 
+def am_softmax(logits, labels, num_classes, scale=30, margin=0.35):
+  """ Addictive angular softmax, which defers from regular softmax for:
+  1. Perform L2 normalization on output layer's input and weight, 
+      the logits, i.e. dot product between input and weight, become COS.
+  2. COS value minus a constant positive margin for positive label, 
+      then scale by factor scale.
+  """
+  with tf.name_scope('am_softmax'):
+    # shape: batch x features_tokens x depth if axis == -1, same shape as logits
+    one_hot_labels = tf.one_hot(labels, depth=num_classes, dtype=tf.float32)
+    logits = one_hot_labels * (logits - margin) + (1 - one_hot_labels) * logits
+    logits *= scale
+    # shape: batch x features_tokens
+    per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, 
+        labels=one_hot_labels)
+    probabilities = tf.nn.softmax(logits, axis=-1) # NOTE same shape as logits
+    predictions = tf.argmax(probabilities, axis=-1, output_type=tf.int64)      
+    return per_token_loss, predictions  
+
+
 def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate, 
     is_training, num_layers=1):
   """ FusedRNNCell
