@@ -203,3 +203,14 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
     if m is not None:
       param_name = m.group(1)
     return param_name
+
+
+def lr_scaling(scale):
+  """ scales gradients in the backward pass by a factor scale.
+  """
+  @tf.custom_gradient
+  def _lr_scaling(x):
+    def grad(dy):
+      return dy * scale * tf.ones_like(x)
+    return tf.identity(x), grad
+  return _lr_scaling
