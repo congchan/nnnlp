@@ -402,6 +402,73 @@ def bilstm_fused(inputs, sequence_lengths, lstm_size, bilstm_dropout_rate,
   return rnn_output
 
 
+def idcnn_layer(config, model_inputs, name=None):
+  """
+  config params:
+    is_train
+    filter_height: for text, 1
+    filter_width: 
+    embedding_dim: # input channels
+    num_filter: # of output channels
+    repeat_times
+    layers
+
+   
+  :param idcnn_inputs: [batch_size, seq_len, emb_size] 
+  :return: [batch_size, seq_len, cnn_output_width]
+  """
+  # shape of input = [batch, in_height=1, in_width=seq_len, in_channels=emb_size]
+  model_inputs = tf.expand_dims(model_inputs, 1)
+
+  with tf.variable_scope("idcnn" if not name else name):
+    # filter [filter_height, filter_width, in_channels, out_channels]
+    filter_shape = [1, config.filter_width, config.embedding_dim,
+                config.num_filter]
+    # print(shape)
+    filter_weights = tf.get_variable(
+        "idcnn_filter",
+        shape=filter_shape,
+        initializer=config.initializer)
+    layerInput = tf.nn.conv2d(model_inputs,
+                              filter_weights,
+                              strides=[1, 1, 1, 1],
+                              padding="SAME",
+                              name="init_layer")
+    finalOutFromLayers = []
+    totalWidthForLastDim = 0
+    for j in range(config.repeat_times):
+      for i in range(len(config.layers)):
+        dilation = config.layers[i]['dilation']
+        isLast = True if i == (len(config.layers) - 1) else False
+        with tf.variable_scope("atrous-conv-layer-%d" % i,
+                                reuse=tf.AUTO_REUSE):
+          w = tf.get_variable(
+              "filter_w",
+              shape=[1, config.filter_width, config.num_filter,
+                      config.num_filter],
+              initializer=tf.contrib.layers.xavier_initializer())
+          b = tf.get_variable("filter_b", shape=[config.num_filter])
+          conv = tf.nn.atrous_conv2d(layerInput,
+                                      w,
+                                      rate=dilation,
+                                      padding="SAME")
+          conv = tf.nn.bias_add(conv, b)
+          conv = tf.nn.relu(conv)
+          if isLast:
+            finalOutFromLayers.append(conv)
+            totalWidthForLastDim += config.num_filter
+          layerInput = conv
+            
+    finalOut = tf.concat(axis=3, values=finalOutFromLayers)
+    keepProb = 1.0 if config.is_train else 0.5
+    finalOut = tf.nn.dropout(finalOut, keepProb)
+
+    finalOut = tf.squeeze(finalOut, [1])
+    finalOut = tf.reshape(finalOut, [-1, totalWidthForLastDim])
+    config.cnn_output_width = totalWidthForLastDim
+    return finalOut
+
+      
 def cudnn_rnn(inputs, sequence_lengths, time_major=False,
     num_layers=1, dropout=0.0, rnn_size=128, is_training=True,
     cell_type='lstm', direction='unidirectional'):
