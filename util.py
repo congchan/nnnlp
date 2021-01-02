@@ -60,7 +60,6 @@ def write_json(data, path):
             f.write('\n')
 
 
-
 def get_entity_from_bio(tokens, entitys):
     """
     Get {word:entity} from bio labeled sequence,. 
@@ -673,7 +672,7 @@ def is_duplicate(data):
 
 def to_json_string(_dict):
     """Serializes this instance to a JSON string."""
-    return json.dumps(copy.deepcopy(_dict), indent=2, sort_keys=True) + "\n"
+    return json.dumps(copy.deepcopy(_dict), indent=2, sort_keys=True, ensure_ascii=False)
 
 
 def cnt_entity(data):
