@@ -36,7 +36,7 @@ from ..util import (
   SpanBasedF1Measure,
   write_eval
 )
-from ..modeling import (bilstm_fused, crf_layer, softmax)
+from ..modeling import (bilstm_fused, crf, softmax)
 
 flags = tf.flags
 
@@ -451,7 +451,7 @@ def create_model(bert_config, is_training, input_ids, input_mask,
         num_labels, logits, labels))
 
     if FLAGS.use_crf:
-      per_example_loss, predictions, _ = crf_layer(
+      per_example_loss, predictions, _ = crf(
           inputs=logits,
           tag_indices=labels,
           num_labels=num_labels,
