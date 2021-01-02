@@ -405,7 +405,7 @@ def file_based_input_fn_builder(input_files, seq_length, is_training,
 
 
 def create_model(bert_config, is_training, input_ids, input_mask, 
-                 labels, num_labels, use_one_hot_embeddings):
+                 labels, num_labels, use_one_hot_embeddings, inference_only=False):
   """Creates a ner model."""
   model = modeling.BertModel(
       config=bert_config,
@@ -451,16 +451,21 @@ def create_model(bert_config, is_training, input_ids, input_mask,
         num_labels, logits, labels))
 
     if FLAGS.use_crf:
-      per_example_loss, predictions, _ = crf_layer(inputs=logits, 
-          tag_indices=labels, 
-          num_labels=num_labels, 
-          true_sequence_lengths=_true_length, 
-          transitions_name="transitions", 
+      per_example_loss, predictions, _ = crf_layer(
+          inputs=logits,
+          tag_indices=labels,
+          num_labels=num_labels,
+          true_sequence_lengths=_true_length,
+          transitions_name="transitions",
+          inference_only=inference_only
           )
     else:
       per_example_loss, predictions = softmax(logits=logits,
           labels=labels, num_classes=num_labels, mask=input_mask)
     
+    if inference_only:
+      return predictions
+
     loss = tf.reduce_mean(per_example_loss)
 
     return (loss, per_example_loss, logits, predictions)
@@ -567,6 +572,77 @@ def model_fn_builder(bert_config, label_list, init_checkpoint, learning_rate,
 
   return model_fn
 
+
+def export_model(label_list):
+  """
+  Load checkpoint, add prediction nodes, 
+  export the gragh with weight as tensorflow service model and protobuf file.
+  :param: label_list
+  """
+  export_tf_service_dir = os.path.join(FLAGS.output_dir, 'tf_service', FLAGS.model_version)
+  os.makedirs(export_tf_service_dir, exist_ok=True)
+  shutil.rmtree(export_tf_service_dir, ignore_errors=True)
+
+  export_protobuf_dir = os.path.join(FLAGS.output_dir, 'protobuf', FLAGS.model_version)
+  os.makedirs(export_protobuf_dir, exist_ok=True)
+
+  tf.logging.info('build graph...')
+  # graph = tf.Graph()
+  # with graph.as_default():
+  with tf.Session(graph=tf.Graph()) as sess:
+    input_ids = tf.placeholder(tf.int32, (None, FLAGS.max_seq_length), 'input_ids')
+    input_mask = tf.placeholder(tf.int32, (None, FLAGS.max_seq_length), 'input_mask')
+
+    model_config = modeling.BertConfig.from_json_file(os.path.join(
+        FLAGS.init_checkpoint_dir, 'bert_config.json'))
+
+    predictions = create_model(
+        bert_config=model_config, 
+        is_training=False,
+        input_ids=input_ids,
+        input_mask=input_mask,
+        labels=None,
+        label_list=label_list,
+        use_one_hot_embeddings=False,
+        inference_only=True
+        )
+    predictions = tf.identity(predictions, 'outputs')
+    saver = tf.train.Saver()
+    saver.restore(sess, FLAGS.checkpoint_path)
+
+    tf.logging.info('save model ...')
+    tf.saved_model.simple_save(session=sess, export_dir=export_tf_service_dir,
+            inputs={"input_ids": input_ids,
+                    "input_mask": input_mask,
+                    },
+            outputs={"outputs": predictions})
+
+    input_graph_def = tf.get_default_graph().as_graph_def()
+    # input_tensors = [input_ids, input_mask]
+    # dtypes = [n.dtype for n in input_tensors]
+    # from tensorflow.python.tools.optimize_for_inference_lib import optimize_for_inference
+    # input_graph_def = optimize_for_inference(
+    #     input_graph_def=input_graph_def,
+    #     input_node_names=["input_ids", "input_mask"], #[n.name[:-2] for n in input_tensors]
+    #     output_node_names=["outputs"],
+    #     placeholder_type_enum=[dtype.as_datatype_enum for dtype in dtypes],
+    #     toco_compatible=False)
+    tf.logging.info('freeze ...')
+    output_graph_def = graph_util.convert_variables_to_constants(
+        sess=sess, 
+        input_graph_def=input_graph_def, 
+        output_node_names=["outputs"], 
+        variable_names_whitelist=None,
+        variable_names_blacklist=None
+        )
+    # # For some models, we would like to remove training nodes
+    # output_graph_def = graph_util.remove_training_nodes(
+    #     output_graph_def, protected_nodes=None)
+    
+    pb_file = os.path.join(export_protobuf_dir, 'model.pb')
+    tf.logging.info('write graph to file: %s' % pb_file)
+    with tf.gfile.GFile(pb_file, 'wb') as f:
+      f.write(output_graph_def.SerializeToString())
 
 
 ###############################################################################
@@ -802,6 +878,8 @@ def main(_):
           line = "{}\t{}\t{}\n".format(next(words), example.labels[i], tag)
           writer.write(line)
 
+
+  if FLAGS.export_model:
 
 if __name__ == "__main__":
   tf.app.run()
