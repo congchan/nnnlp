@@ -239,7 +239,7 @@ def embedding_postprocessor(input_tensor,
   return output
 
 
-def crf_layer(inputs, tag_indices, num_labels, true_sequence_lengths, 
+def crf(inputs, tag_indices, num_labels, true_sequence_lengths, 
     transitions_name="transitions", inference_only=False):
   """ Performs tensorflow crf decoding.
   Args:
@@ -302,7 +302,7 @@ def softmax(logits, labels, num_classes, mask=None):
 
   if mask is not None and len(per_token_loss.shape.as_list()) > 2:
     mask = tf.cast(mask, tf.float32)
-    per_token_loss = tf.einsum("BFH,BF->BFH", per_token_loss, mask)
+    per_token_loss = tf.einsum("BTH,BT->BTH", per_token_loss, mask)
 
   per_example_loss = -tf.reduce_sum(per_token_loss, axis=-1)
 
@@ -344,12 +344,12 @@ def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate,
     is_training, num_layers=1):
   """ FusedRNNCell
   Args:
-      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`
+      inputs: `3-D` tensor with shape `[batch_size, time_len, input_size]`
       sequence_length: Specifies the length of each sequence in inputs. An
         `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
         time_len)` or None.
   Returns:
-      Cell state (cs): A `3-D` tensor of shape `[time_len, batch_size,
+      Cell state (cs): A `3-D` tensor of shape `[batch_size, time_len,
                          output_size]`
   """
   def _lstm_fused(inputs, sequence_length, lstm_size, is_training, dropout_rate=0.5, 
