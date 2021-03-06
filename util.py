@@ -1,4 +1,5 @@
 # coding=utf-8
+import logging
 import os, json, csv, time
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ import unittest
 import copy
 
 
-__all__ = ['read_json_list', 'write_file', 'write_json', 'read_text',
+__all__ = ['get_logger', 'read_json_list', 'write_file', 'write_json', 'read_text',
            'UnbalancedMetrics', 'write_eval', 'write_confusion_matrix',
            'SpanBasedF1Measure', 
            'slide_over_sequence','split_paragraph',
@@ -19,6 +20,25 @@ __all__ = ['read_json_list', 'write_file', 'write_json', 'read_text',
            'to_json_string',
            'get_entity_from_bio',
           ]
+
+
+def get_logger(name, to_file, level=logging.INFO):
+    logger = logging.getLogger(name=name)
+    logger.setLevel(level=level)
+    formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(message)s')
+
+    handler = logging.FileHandler(filename=to_file)
+    handler.setLevel(level=level)
+    handler.setFormatter(formatter)
+
+    console = logging.StreamHandler()
+    console.setLevel(level=level)
+    console.setFormatter(formatter)
+
+    logger.addHandler(handler)
+    logger.addHandler(console)
+    return logger
+
 
 def read_json_list(path, debug=None):
     " load a list of dict from json file "
