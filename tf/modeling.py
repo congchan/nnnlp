@@ -9,6 +9,121 @@ from six.moves import range
 import tensorflow as tf
 
 
+def bilinear_classifier(in1_BTH, in2_BTH, keep_prob, output_size=1,
+    add_bias_1=True, add_bias_2=True, name='Bilinear'):
+  """biaffine_mapping() with dropout."""
+  with tf.variable_scope(name):
+    # Statically known input dimensions.
+    input_size = in1_BTH.get_shape().as_list()[-1]
+    # Dynamically known input dimensions
+    batch_size = tf.shape(in1_BTH)[0]
+    noise_shape = [batch_size, 1, input_size]
+    biaffine = biaffine_mapping(
+        in1_BTH,
+        in2_BTH,
+        output_size,
+        add_bias_1=add_bias_1,
+        add_bias_2=add_bias_2,
+        initializer=tf.zeros_initializer())
+    if output_size == 1:
+      output = tf.squeeze(biaffine, axis=2)
+    else:
+      output = tf.transpose(biaffine, [0,1,3,2])
+    return output
+
+
+def biaffine_mapping(vector_set_1,
+               vector_set_2,
+               output_size,
+               add_bias_1=True,
+               add_bias_2=True,
+              initializer= None):
+  """Bilinear mapping: maps two vector spaces to a third vector space.
+
+  The input vector spaces are two 3d matrices: batch size x feature size x values
+  A typical application of the function is to compute a square matrix
+  representing a dependency tree. The output is for each feature a square
+  matrix of the form [feature size, output size, feature size]. If the output size
+  is set to 1 then results is [feature size, 1, feature size] equivalent to
+  a square matrix where the feature for instance represent the tokens on
+  the x-axis and y-axis. In this way represent the adjacency matrix of a
+  dependency graph (see https://arxiv.org/abs/1611.01734).
+
+  Args:
+     vector_set_1: vectors of space one
+     vector_set_2: vectors of space two
+     output_size: number of output labels (e.g. edge labels)
+     add_bias_1: Whether to add a bias for input one
+     add_bias_2: Whether to add a bias for input two
+     initializer: Initializer for the bilinear weight map
+
+  Returns:
+    Output vector space as 4d matrix:
+    batch size x feature size x output size x feature size
+    The output could represent an unlabeled dependency tree when
+    the output size is 1 or a labeled tree otherwise.
+
+  """
+  with tf.variable_scope('Bilinear'):
+    # Dynamic shape info
+    batch_size = tf.shape(vector_set_1)[0]
+    feature_size = tf.shape(vector_set_1)[1]
+
+    if add_bias_1:
+      vector_set_1 = tf.concat(
+          [vector_set_1, tf.ones([batch_size, feature_size, 1])], axis=2)
+    if add_bias_2:
+      vector_set_2 = tf.concat(
+          [vector_set_2, tf.ones([batch_size, feature_size, 1])], axis=2)
+
+    # Static shape info
+    vector_set_1_size = vector_set_1.get_shape().as_list()[-1]
+    vector_set_2_size = vector_set_2.get_shape().as_list()[-1]
+
+    if not initializer:
+      initializer = tf.orthogonal_initializer()
+
+    # Mapping matrix
+    bilinear_map = tf.get_variable(
+        'bilinear_map', [vector_set_1_size, output_size, vector_set_2_size],
+        initializer=initializer)
+
+    # # The matrix operations and reshapings for bilinear mapping.
+    # # b: batch size (batch of features)
+    # # v1, v2: values (size of vectors)
+    # # n: tokens (size of feature)
+    # # r: labels (output size), e.g. 1 if unlabeled or number of edge labels.
+    #
+    # # [b, n, v1] -> [b*n, v1]
+    # vector_set_1 = tf.reshape(vector_set_1, [-1, vector_set_1_size])
+    #
+    # # [v1, r, v2] -> [v1, r*v2]
+    # bilinear_map = tf.reshape(bilinear_map, [vector_set_1_size, -1])
+    #
+    # # [b*n, v1] x [v1, r*v2] -> [b*n, r*v2]
+    # bilinear_mapping = tf.matmul(vector_set_1, bilinear_map)
+    #
+    # # [b*n, r*v2] -> [b, n*r, v2]
+    # bilinear_mapping = tf.reshape(
+    #     bilinear_mapping,
+    #     [batch_size, feature_size * output_size, vector_set_2_size])
+    #
+    # # [b, n*r, v2] x [b, n, v2]T -> [b, n*r, n]
+    # bilinear_mapping = tf.matmul(bilinear_mapping, vector_set_2, adjoint_b=True)
+    #
+    # # [b, n*r, n] -> [b, n, r, n]
+    # bilinear_mapping = tf.reshape(
+    #     bilinear_mapping, [batch_size, feature_size, output_size, feature_size])
+    # #
+    # tmp = tf.einsum("BFX,XRY->BFRY", vector_set_1, bilinear_map)
+    # tmp = tf.einsum("BFRY,BFY->BFRF", tmp, vector_set_2)
+    # bilinear_mapping = tf.einsum("BFRY,BFY->BFRF", tmp, vector_set_2)
+    # [batch_size, n_out, seq_len, seq_len]
+    bilinear_mapping = tf.einsum('bxi,ioj,byj->bxoy', vector_set_1, bilinear_map, vector_set_2)
+
+    return bilinear_mapping
+
+
 def get_assignment_map_from_checkpoint(tvars, init_checkpoint):
   """Compute the union of the current variables and checkpoint variables."""
   assignment_map = {}
