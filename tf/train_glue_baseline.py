@@ -54,6 +54,10 @@ flags.DEFINE_string(
     "init_checkpoint", None,
     "Initial checkpoint (usually from a pre-trained BERT model).")
 
+# flags.DEFINE_string(
+#     "albert_hub_module_handle", None,
+#     "If set, the ALBERT hub module to use.")
+
 flags.DEFINE_bool(
     "do_lower_case", True,
     "Whether to lower case the input text. Should be True for uncased "
@@ -262,6 +266,15 @@ def create_model(config, is_training, input_ids, input_mask, segment_ids,
       bilstm_dropout_rate=config.bilstm_dropout_rate, 
       is_training=is_training,
       num_layers=config.num_bilstm)
+  # with tf.variable_scope("bilstm"):
+  #   sequence_output, _ = modeling.cudnn_rnn(
+  #     inputs=embedding_output, 
+  #     sequence_lengths=_true_length, 
+  #     rnn_size=config.lstm_size,
+  #     dropout=config.bilstm_dropout_rate, 
+  #     is_training=is_training,
+  #     num_layers=config.num_bilstm,
+  #     direction='bidirectional')
 
   # first_token_tensor = tf.squeeze(sequence_output[:, -1:, :], axis=1)
   last_token_tensor = tf.squeeze(sequence_output[:, -1:, :], axis=1)
@@ -532,6 +545,10 @@ def main(_):
   if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict:
     raise ValueError(
         "At least one of `do_train`, `do_eval` or `do_predict' must be True.")
+
+  # if not FLAGS.config_file and not FLAGS.albert_hub_module_handle:
+  #   raise ValueError("At least one of `--config_file` and "
+  #                    "`--albert_hub_module_handle` must be set")
 
   if FLAGS.config_file:
     config = Config.from_json_file(
