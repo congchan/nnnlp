@@ -1,5 +1,4 @@
 # coding=utf-8
-# Copyright 2020 The Pingannlp Team Authors.
 
 from typing import List
 from tokenization import load_vocab, convert_to_unicode, convert_by_vocab
