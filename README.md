@@ -1,12 +1,18 @@
-## Tensorflow-nlp
-This repository contains some useful tensorflow coding, which provide a general frame and structure for implementing some state-of-the-art natural language processing models.
+## Neural Networks for Natural Language Processing 
+This repository contains some useful functions, classes and codes snippets, which provide some general frameworks, logits, pipeline or structure for implementing some state-of-the-art deep learning natural language processing models.
 
 
 ## Structure
 public scripts:
-* modeling.py: contains some popular models/layers, such as bert/albert, crf layer, lstm layer, etc.. 
-* optimization.py: optimization script.
-* tokenization.py: for text tokenization.
+There are two codebases:
+* `./tf`: the tensorflow codebase
+* `./torch`: the pytorch codebase
+
+Within each codesbase:
+* `./modeling.py`: contains some popular models/layers, such as bert/albert, crf layer, lstm layer, etc.. 
+* `./optimization.py`: optional optimization script.
+* `./tokenization.py`: for text tokenization.
+* some util scripts
 
 demo training scripts:
 * train_glue_baseline.py: which is sigle layer bilstm baseline model for GLUE task.
