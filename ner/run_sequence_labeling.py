@@ -36,7 +36,8 @@ from ..util import (
     SpanBasedF1Measure,
     write_eval
 )
-from ..tf.modeling import (bilstm_fused, crf, softmax)
+from ..tf.modeling import bilstm_fused
+from ..tf.loss import crf, softmax
 
 flags = tf.flags
 
