@@ -354,6 +354,44 @@ def embedding_postprocessor(input_tensor,
   return output
 
 
+def stack_rnn(inputs, rnn_size, dropout_rate, sequence_length, initial_state=None, num_layers=1, rnn_type='lstm'):
+  """Stack multiple layers of RNN/LSTM/GRU with rnn.MultiRNNCell API"""
+
+  def get_cell():
+    if rnn_type.lower() == "lstm":
+      # call return: new_h, LSTMStateTuple(new_c, new_h)
+      rnn_cell = tf.nn.rnn_cell.LSTMCell(num_units=rnn_size)
+    elif rnn_type.lower() == "gru":
+      # call return: new_h, new_h
+      rnn_cell = tf.nn.rnn_cell.GRUCell(num_units=rnn_size)
+    else:
+      # call return:  output, output, output = new_state
+      rnn_cell = tf.nn.rnn_cell.BasicRNNCell(num_units=rnn_size)
+    rnn_cell = tf.nn.rnn_cell.DropoutWrapper(
+      cell=rnn_cell,
+      # input_keep_prob=1.0,
+      output_keep_prob=1 - dropout_rate
+    )
+    return rnn_cell
+
+  rnn_cells = [get_cell() for _ in range(num_layers)]
+  rnn_cells = tf.contrib.rnn.MultiRNNCell(rnn_cells)
+  if not initial_state:
+    input_shape = get_shape_list(inputs, expected_rank=3)
+    batch_size = input_shape[0]
+    initial_state = rnn_cells.zero_state(batch_size, tf.float32)
+  outputs, states = tf.nn.dynamic_rnn(
+    cell=rnn_cells,
+    inputs=inputs,
+    sequence_length=sequence_length,
+    initial_state=initial_state,
+    dtype=tf.float32
+  )
+  # outputs shape [batch_size, seq, rnn_size]
+  # For LSTM, 'state' is a N-tuple where N is the number of Cells containing a
+  # tf.nn.rnn_cell.LSTMStateTuple for each cell
+
+  return outputs, states
 
 
 def stack_rnn_fused(inputs, sequence_length, rnn_size, dropout_rate,
