@@ -9,7 +9,8 @@ There are two codebases:
 * `./torch`: the pytorch codebase
 
 Within each codesbase:
-* `./modeling.py`: contains some popular models/layers, such as bert/albert, crf layer, lstm layer, etc.. 
+* `./modeling.py`: contains some popular models/layers, such as transformer block, bert/albert, lstm layer, etc.. 
+* `./loss.py`: different loss, softmax with label smoothing, focal loss, crf loss, etc..
 * `./optimization.py`: optional optimization script.
 * `./tokenization.py`: for text tokenization.
 * some util scripts
@@ -26,3 +27,14 @@ other scripts:
 * lamb_optimizer.py: lamb_optimizer.
 
 
+## Details
+
+### Modeling
+
+
+### Loss
+* `softmax`: softmax with optional label smoothing
+* `crf`: crf loss and decoding
+* `am_softmax`: Addictive angular softmax
+* `contrastive_loss`: pairvise loss
+* `sigmoid_focal_crossentropy`: focal loss function for multiple anchors or sequence of tokens
