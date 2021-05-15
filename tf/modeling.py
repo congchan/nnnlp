@@ -10,7 +10,7 @@ import tensorflow as tf
 
 
 def bilinear_classifier(in1_BTH, in2_BTH, keep_prob, output_size=1,
-    add_bias_1=True, add_bias_2=True, name='Bilinear'):
+                        add_bias_1=True, add_bias_2=True, name='Bilinear'):
   """biaffine_mapping() with dropout."""
   with tf.variable_scope(name):
     # Statically known input dimensions.
@@ -19,25 +19,25 @@ def bilinear_classifier(in1_BTH, in2_BTH, keep_prob, output_size=1,
     batch_size = tf.shape(in1_BTH)[0]
     noise_shape = [batch_size, 1, input_size]
     biaffine = biaffine_mapping(
-        in1_BTH,
-        in2_BTH,
-        output_size,
-        add_bias_1=add_bias_1,
-        add_bias_2=add_bias_2,
-        initializer=tf.zeros_initializer())
+      in1_BTH,
+      in2_BTH,
+      output_size,
+      add_bias_1=add_bias_1,
+      add_bias_2=add_bias_2,
+      initializer=tf.zeros_initializer())
     if output_size == 1:
       output = tf.squeeze(biaffine, axis=2)
     else:
-      output = tf.transpose(biaffine, [0,1,3,2])
+      output = tf.transpose(biaffine, [0, 1, 3, 2])
     return output
 
 
 def biaffine_mapping(vector_set_1,
-               vector_set_2,
-               output_size,
-               add_bias_1=True,
-               add_bias_2=True,
-              initializer= None):
+                     vector_set_2,
+                     output_size,
+                     add_bias_1=True,
+                     add_bias_2=True,
+                     initializer=None):
   """Bilinear mapping: maps two vector spaces to a third vector space.
 
   The input vector spaces are two 3d matrices: batch size x feature size x values
@@ -71,10 +71,10 @@ def biaffine_mapping(vector_set_1,
 
     if add_bias_1:
       vector_set_1 = tf.concat(
-          [vector_set_1, tf.ones([batch_size, feature_size, 1])], axis=2)
+        [vector_set_1, tf.ones([batch_size, feature_size, 1])], axis=2)
     if add_bias_2:
       vector_set_2 = tf.concat(
-          [vector_set_2, tf.ones([batch_size, feature_size, 1])], axis=2)
+        [vector_set_2, tf.ones([batch_size, feature_size, 1])], axis=2)
 
     # Static shape info
     vector_set_1_size = vector_set_1.get_shape().as_list()[-1]
@@ -85,8 +85,8 @@ def biaffine_mapping(vector_set_1,
 
     # Mapping matrix
     bilinear_map = tf.get_variable(
-        'bilinear_map', [vector_set_1_size, output_size, vector_set_2_size],
-        initializer=initializer)
+      'bilinear_map', [vector_set_1_size, output_size, vector_set_2_size],
+      initializer=initializer)
 
     # # The matrix operations and reshapings for bilinear mapping.
     # # b: batch size (batch of features)
@@ -240,9 +240,9 @@ def embedding_lookup(input_ids,
     input_ids = tf.expand_dims(input_ids, axis=[-1])
 
   embedding_table = tf.get_variable(
-      name=word_embedding_name,
-      shape=[vocab_size, embedding_size],
-      initializer=create_initializer(initializer_range))
+    name=word_embedding_name,
+    shape=[vocab_size, embedding_size],
+    initializer=create_initializer(initializer_range))
 
   if use_one_hot_embeddings:
     flat_input_ids = tf.reshape(input_ids, [-1])
@@ -307,9 +307,9 @@ def embedding_postprocessor(input_tensor,
       raise ValueError("`token_type_ids` must be specified if"
                        "`use_token_type` is True.")
     token_type_table = tf.get_variable(
-        name=token_type_embedding_name,
-        shape=[token_type_vocab_size, width],
-        initializer=create_initializer(initializer_range))
+      name=token_type_embedding_name,
+      shape=[token_type_vocab_size, width],
+      initializer=create_initializer(initializer_range))
     # This vocab will be small so we always do one-hot here, since it is always
     # faster for a small vocabulary.
     flat_token_type_ids = tf.reshape(token_type_ids, [-1])
@@ -323,9 +323,9 @@ def embedding_postprocessor(input_tensor,
     assert_op = tf.assert_less_equal(seq_length, max_position_embeddings)
     with tf.control_dependencies([assert_op]):
       full_position_embeddings = tf.get_variable(
-          name=position_embedding_name,
-          shape=[max_position_embeddings, width],
-          initializer=create_initializer(initializer_range))
+        name=position_embedding_name,
+        shape=[max_position_embeddings, width],
+        initializer=create_initializer(initializer_range))
       # Since the position embedding table is a learned variable, we create it
       # using a (long) sequence length `max_position_embeddings`. The actual
       # sequence length might be shorter than this, for faster training of
@@ -354,70 +354,11 @@ def embedding_postprocessor(input_tensor,
   return output
 
 
-def softmax(logits, labels, num_classes, mask=None):
-  """ Perform softmax operation
-  Args:
-    logits: Logits outputs of the network, last dimension should be num_classes, 
-        ie.. [batch_size, seq_length ?, num_classes];
-    labels: A [batch_size, seq_length ?] tensor represent true label ids.
-    mask: mask should be the same shape as logits.
-  Return:
-    per_example_loss, a [batch_size] tensor containing the cross_entropy loss.
-  """
-  # # shape: batch x features_tokens x depth if axis==-1, same shape as logits
-  one_hot_labels = tf.one_hot(labels, depth=num_classes, dtype=tf.float32)
-  # # shape: batch x features_tokens
-  # per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, 
-  #     labels=one_hot_labels)
-
-  # An alternative way, less efficient, but allow self-define mask
-  log_probs = tf.nn.log_softmax(logits, axis=-1) # NOTE same shape as logits
-  # NOTE shape (batch_size, max_seq_len, depth)
-  per_token_loss = one_hot_labels * log_probs
-
-  if mask is not None and len(per_token_loss.shape.as_list()) > 2:
-    mask = tf.cast(mask, tf.float32)
-    per_token_loss = tf.einsum("BTH,BT->BTH", per_token_loss, mask)
-
-  per_example_loss = -tf.reduce_sum(per_token_loss, axis=-1)
-
-  probabilities = tf.nn.softmax(logits, axis=-1) # NOTE same shape as logits
-  predictions = tf.argmax(probabilities, axis=-1, output_type=tf.int64)
-
-  return per_example_loss, predictions
 
 
-def am_softmax(logits, labels, num_classes, scale=30, margin=0.35):
-  """ Addictive angular softmax, which defers from regular softmax for:
-  1. Perform L2 normalization on output layer's input and weight, 
-      the logits, i.e. dot product between input and weight, become COS.
-  2. COS value minus a constant positive margin for positive label, 
-      then scale by factor scale.
-  """
-  with tf.name_scope('am_softmax'):
-    # shape: batch x features_tokens x depth if axis == -1, same shape as logits
-    one_hot_labels = tf.one_hot(labels, depth=num_classes, dtype=tf.float32)
-    logits = one_hot_labels * (logits - margin) + (1 - one_hot_labels) * logits
-    logits *= scale
-    # shape: batch x features_tokens
-    per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
-        labels=one_hot_labels)
-    probabilities = tf.nn.softmax(logits, axis=-1) # NOTE same shape as logits
-    predictions = tf.argmax(probabilities, axis=-1, output_type=tf.int64)
-    return per_token_loss, predictions
-
-
-def contrastive_loss(model1, model2, y, margin):
-	with tf.name_scope("contrastive-loss"):
-		distance = tf.sqrt(tf.reduce_sum(tf.pow(model1 - model2, 2), 1, keepdims=True))
-		similarity = y * tf.square(distance) # keep the similar label (1) close to each other
-		dissimilarity = (1 - y) * tf.square(tf.maximum((margin - distance), 0)) # give penalty to dissimilar label if the distance is bigger than margin
-		return tf.reduce_mean(dissimilarity + similarity) / 2
-
-
-def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate,
-    is_training, num_layers=1):
-  """ FusedRNNCell
+def stack_rnn_fused(inputs, sequence_length, rnn_size, dropout_rate,
+              is_training, num_layers=1, rnn_type='lstm'):
+  """ FusedRNNCell with LSTM or GRU
   Args:
       inputs: `3-D` tensor with shape `[batch_size, time_len, input_size]`
       sequence_length: Specifies the length of each sequence in inputs. An
@@ -427,13 +368,55 @@ def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate,
       Cell state (cs): A `3-D` tensor of shape `[batch_size, time_len,
                          output_size]`
   """
+
+  def get_rnn_fused(inputs, sequence_length, rnn_size, is_training, dropout_rate=0.5,
+                    scope='{}-fused'.format(rnn_type)):
+    with tf.variable_scope(scope):
+      inputs = tf.transpose(inputs, perm=[1, 0, 2])  # Need time-major
+      if rnn_type.lower() == "lstm":
+        rnn_cell = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
+      elif rnn_type.lower() == "gru":
+        rnn_cell = tf.contrib.rnn.GRUBlockCellV2(rnn_size)
+      outputs, _ = rnn_cell(inputs, dtype=tf.float32,
+                            sequence_length=sequence_length)
+      outputs = tf.transpose(outputs, perm=[1, 0, 2])
+      outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=is_training)
+      return outputs
+
+  rnn_output = tf.identity(inputs)
+  for i in range(num_layers):
+    scope = 'rnn-fused-%s' % i
+    rnn_output = get_rnn_fused(
+      rnn_output,
+      sequence_length=sequence_length,
+      rnn_size=rnn_size,
+      is_training=is_training,
+      dropout_rate=dropout_rate,
+      scope=scope
+    )  # (batch_size, seq_length, rnn_size)
+  return rnn_output
+
+
+def lstm_fused(inputs, sequence_length, lstm_size, dropout_rate,
+               is_training, num_layers=1):
+  """ FusedRNNCell with LSTM
+  Args:
+      inputs: `3-D` tensor with shape `[batch_size, time_len, input_size]`
+      sequence_length: Specifies the length of each sequence in inputs. An
+        `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
+        time_len)` or None.
+  Returns:
+      Cell state (cs): A `3-D` tensor of shape `[batch_size, time_len,
+                         output_size]`
+  """
+
   def _lstm_fused(inputs, sequence_length, lstm_size, is_training, dropout_rate=0.5,
-                    scope='lstm-fused'):
+                  scope='lstm-fused'):
     with tf.variable_scope(scope):
       inputs = tf.transpose(inputs, perm=[1, 0, 2])  # Need time-major
       lstm_cell = tf.contrib.rnn.LSTMBlockFusedCell(lstm_size)
       outputs, _ = lstm_cell(inputs, dtype=tf.float32,
-                            sequence_length=sequence_length)
+                             sequence_length=sequence_length)
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
       outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=is_training)
       return outputs
@@ -442,26 +425,27 @@ def lstm_fused(inputs, sequence_length, lstm_size, bilstm_dropout_rate,
   for i in range(num_layers):
     scope = 'lstm-fused-%s' % i
     rnn_output = _lstm_fused(rnn_output, sequence_length, lstm_size=lstm_size,
-                                is_training=is_training,
-                                dropout_rate=bilstm_dropout_rate,
-                                scope=scope)  # (batch_size, seq_length, 2*rnn_size)
+                             is_training=is_training,
+                             dropout_rate=dropout_rate,
+                             scope=scope)  # (batch_size, seq_length, 2*rnn_size)
   return rnn_output
 
 
 def bilstm_fused(inputs, sequence_lengths, lstm_size, bilstm_dropout_rate,
-    is_training, num_layers=1):
+                 is_training, num_layers=1):
   """ FusedRNNCell uses a single TF op for the entire LSTM. """
+
   def _bi_lstm_fused(inputs, sequence_lengths, rnn_size, is_training,
-                    dropout_rate=0.5, scope='bi-lstm-fused'):
+                     dropout_rate=0.5, scope='bi-lstm-fused'):
     with tf.variable_scope(scope):
       inputs = tf.transpose(inputs, perm=[1, 0, 2])  # Need time-major
       lstm_cell_fw = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
       lstm_cell_bw = tf.contrib.rnn.LSTMBlockFusedCell(rnn_size)
       lstm_cell_bw = tf.contrib.rnn.TimeReversedFusedRNN(lstm_cell_bw)
       output_fw, _ = lstm_cell_fw(inputs, dtype=tf.float32,
-          sequence_length=sequence_lengths)
+                                  sequence_length=sequence_lengths)
       output_bw, _ = lstm_cell_bw(inputs, dtype=tf.float32,
-          sequence_length=sequence_lengths)
+                                  sequence_length=sequence_lengths)
       outputs = tf.concat([output_fw, output_bw], axis=-1)
       outputs = tf.transpose(outputs, perm=[1, 0, 2])
       outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=is_training)
@@ -498,12 +482,12 @@ def idcnn_layer(config, model_inputs, name=None):
   with tf.variable_scope("idcnn" if not name else name):
     # filter [filter_height, filter_width, in_channels, out_channels]
     filter_shape = [1, config.filter_width, config.embedding_dim,
-                config.num_filter]
+                    config.num_filter]
     # print(shape)
     filter_weights = tf.get_variable(
-        "idcnn_filter",
-        shape=filter_shape,
-        initializer=config.initializer)
+      "idcnn_filter",
+      shape=filter_shape,
+      initializer=config.initializer)
     layerInput = tf.nn.conv2d(model_inputs,
                               filter_weights,
                               strides=[1, 1, 1, 1],
@@ -516,17 +500,17 @@ def idcnn_layer(config, model_inputs, name=None):
         dilation = config.layers[i]['dilation']
         isLast = True if i == (len(config.layers) - 1) else False
         with tf.variable_scope("atrous-conv-layer-%d" % i,
-                                reuse=tf.AUTO_REUSE):
+                               reuse=tf.AUTO_REUSE):
           w = tf.get_variable(
-              "filter_w",
-              shape=[1, config.filter_width, config.num_filter,
-                      config.num_filter],
-              initializer=tf.contrib.layers.xavier_initializer())
+            "filter_w",
+            shape=[1, config.filter_width, config.num_filter,
+                   config.num_filter],
+            initializer=tf.contrib.layers.xavier_initializer())
           b = tf.get_variable("filter_b", shape=[config.num_filter])
           conv = tf.nn.atrous_conv2d(layerInput,
-                                      w,
-                                      rate=dilation,
-                                      padding="SAME")
+                                     w,
+                                     rate=dilation,
+                                     padding="SAME")
           conv = tf.nn.bias_add(conv, b)
           conv = tf.nn.relu(conv)
           if isLast:
@@ -545,8 +529,8 @@ def idcnn_layer(config, model_inputs, name=None):
 
 
 def cudnn_rnn(inputs, sequence_lengths, time_major=False,
-    num_layers=1, dropout=0.0, rnn_size=128, is_training=True,
-    cell_type='lstm', direction='unidirectional'):
+              num_layers=1, dropout=0.0, rnn_size=128, is_training=True,
+              cell_type='lstm', direction='unidirectional'):
   """ cudnn_lstm/gru/rnn for id tensor.
   Args:
     inputs: int32 Tensor of shape [batch_size, seq_length] containing word
@@ -574,32 +558,32 @@ def cudnn_rnn(inputs, sequence_lengths, time_major=False,
   # If the input is a 2D tensor of shape [batch_size, seq_length], we
   # reshape to [batch_size, seq_length, 1].
   if inputs.shape.ndims == 2:
-      inputs = tf.expand_dims(inputs, axis=[-1])
+    inputs = tf.expand_dims(inputs, axis=[-1])
   model_dic = {
-      'lstm': tf.contrib.cudnn_rnn.CudnnLSTM,
-      'gru': tf.contrib.cudnn_rnn.CudnnGRU,
-      'rnn_relu': tf.contrib.cudnn_rnn.CudnnRNNRelu,
-      'rnn_tanh': tf.contrib.cudnn_rnn.CudnnRNNTanh,
+    'lstm': tf.contrib.cudnn_rnn.CudnnLSTM,
+    'gru': tf.contrib.cudnn_rnn.CudnnGRU,
+    'rnn_relu': tf.contrib.cudnn_rnn.CudnnRNNRelu,
+    'rnn_tanh': tf.contrib.cudnn_rnn.CudnnRNNTanh,
   }
   model = model_dic[cell_type]
   fn = model(
-      num_layers=num_layers,
-      num_units=rnn_size,
-      # input_mode=CUDNN_INPUT_LINEAR_MODE,
-      direction=direction,
-      dropout=dropout,
-      # seed=None,
-      # dtype=tf.dtypes.float32,
-      # kernel_initializer=None,
-      # bias_initializer=None,
-      # name=None
-      )
+    num_layers=num_layers,
+    num_units=rnn_size,
+    # input_mode=CUDNN_INPUT_LINEAR_MODE,
+    direction=direction,
+    dropout=dropout,
+    # seed=None,
+    # dtype=tf.dtypes.float32,
+    # kernel_initializer=None,
+    # bias_initializer=None,
+    # name=None
+  )
   outputs, output_states = fn(
-      inputs=inputs,
-      # initial_state=None,
-      sequence_lengths=sequence_lengths,
-      time_major=time_major,
-      training=is_training,)
+    inputs=inputs,
+    # initial_state=None,
+    sequence_lengths=sequence_lengths,
+    time_major=time_major,
+    training=is_training, )
 
   return outputs, output_states
 
@@ -661,7 +645,7 @@ def dropout(input_tensor, dropout_prob):
 def layer_norm(input_tensor, name=None):
   """Run layer normalization on the last dimension of the tensor."""
   return tf.contrib.layers.layer_norm(
-      inputs=input_tensor, begin_norm_axis=-1, begin_params_axis=-1, scope=name)
+    inputs=input_tensor, begin_norm_axis=-1, begin_params_axis=-1, scope=name)
 
 
 def layer_norm_and_dropout(input_tensor, dropout_prob, name=None):
@@ -694,14 +678,14 @@ def dense_layer_3d(input_tensor,
 
   with tf.variable_scope(name):
     w = tf.get_variable(
-        name="kernel",
-        shape=[hidden_size, num_attention_heads * head_size],
-        initializer=initializer)
+      name="kernel",
+      shape=[hidden_size, num_attention_heads * head_size],
+      initializer=initializer)
     w = tf.reshape(w, [hidden_size, num_attention_heads, head_size])
     b = tf.get_variable(
-        name="bias",
-        shape=[num_attention_heads * head_size],
-        initializer=tf.zeros_initializer)
+      name="bias",
+      shape=[num_attention_heads * head_size],
+      initializer=tf.zeros_initializer)
     b = tf.reshape(b, [num_attention_heads, head_size])
     ret = tf.einsum("BFH,HND->BFND", input_tensor, w)
     ret += b
@@ -731,15 +715,15 @@ def dense_layer_3d_proj(input_tensor,
     float logits Tensor.
   """
   input_shape = get_shape_list(input_tensor)
-  num_attention_heads= input_shape[2]
+  num_attention_heads = input_shape[2]
   with tf.variable_scope(name):
     w = tf.get_variable(
-        name="kernel",
-        shape=[num_attention_heads * head_size, hidden_size],
-        initializer=initializer)
+      name="kernel",
+      shape=[num_attention_heads * head_size, hidden_size],
+      initializer=initializer)
     w = tf.reshape(w, [num_attention_heads, head_size, hidden_size])
     b = tf.get_variable(
-        name="bias", shape=[hidden_size], initializer=tf.zeros_initializer)
+      name="bias", shape=[hidden_size], initializer=tf.zeros_initializer)
     ret = tf.einsum("BFND,NDH->BFH", input_tensor, w)
     ret += b
   if activation is not None:
@@ -770,11 +754,11 @@ def dense_layer_2d(input_tensor,
   hidden_size = input_shape[2]
   with tf.variable_scope(name):
     w = tf.get_variable(
-        name="kernel",
-        shape=[hidden_size, output_size],
-        initializer=initializer)
+      name="kernel",
+      shape=[hidden_size, output_size],
+      initializer=initializer)
     b = tf.get_variable(
-        name="bias", shape=[output_size], initializer=tf.zeros_initializer)
+      name="bias", shape=[output_size], initializer=tf.zeros_initializer)
     ret = tf.einsum("BFH,HO->BFO", input_tensor, w)
     ret += b
   if activation is not None:
@@ -869,11 +853,11 @@ def attention_layer(from_tensor,
   """
   from_shape = get_shape_list(from_tensor, expected_rank=[2, 3])
   to_shape = get_shape_list(to_tensor, expected_rank=[2, 3])
-  size_per_head = int(from_shape[2]/num_attention_heads)
+  size_per_head = int(from_shape[2] / num_attention_heads)
 
   if len(from_shape) != len(to_shape):
     raise ValueError(
-        "The rank of `from_tensor` must match the rank of `to_tensor`.")
+      "The rank of `from_tensor` must match the rank of `to_tensor`.")
 
   if len(from_shape) == 3:
     batch_size = from_shape[0]
@@ -882,9 +866,9 @@ def attention_layer(from_tensor,
   elif len(from_shape) == 2:
     if (batch_size is None or from_seq_length is None or to_seq_length is None):
       raise ValueError(
-          "When passing in rank 2 tensors to attention_layer, the values "
-          "for `batch_size`, `from_seq_length`, and `to_seq_length` "
-          "must all be specified.")
+        "When passing in rank 2 tensors to attention_layer, the values "
+        "for `batch_size`, `from_seq_length`, and `to_seq_length` "
+        "must all be specified.")
 
   # Scalar dimensions referenced here:
   #   B = batch size (number of sequences)
@@ -908,7 +892,7 @@ def attention_layer(from_tensor,
   v = tf.transpose(v, [0, 2, 1, 3])
   if attention_mask is not None:
     attention_mask = tf.reshape(
-        attention_mask, [batch_size, 1, to_seq_length, 1])
+      attention_mask, [batch_size, 1, to_seq_length, 1])
     # 'new_embeddings = [B, N, F, H]'
   new_embeddings = dot_product_attention(q, k, v, attention_mask,
                                          attention_probs_dropout_prob)
@@ -953,42 +937,42 @@ def attention_ffn_block(layer_input,
   with tf.variable_scope("attention_1"):
     with tf.variable_scope("self"):
       attention_output = attention_layer(
-          from_tensor=layer_input,
-          to_tensor=layer_input,
-          attention_mask=attention_mask,
-          num_attention_heads=num_attention_heads,
-          attention_probs_dropout_prob=attention_probs_dropout_prob,
-          initializer_range=initializer_range)
+        from_tensor=layer_input,
+        to_tensor=layer_input,
+        attention_mask=attention_mask,
+        num_attention_heads=num_attention_heads,
+        attention_probs_dropout_prob=attention_probs_dropout_prob,
+        initializer_range=initializer_range)
 
     # Run a linear projection of `hidden_size` then add a residual
     # with `layer_input`.
     with tf.variable_scope("output"):
       attention_output = dense_layer_3d_proj(
-          attention_output,
-          hidden_size,
-          attention_head_size,
-          create_initializer(initializer_range),
-          None,
-          name="dense")
+        attention_output,
+        hidden_size,
+        attention_head_size,
+        create_initializer(initializer_range),
+        None,
+        name="dense")
       attention_output = dropout(attention_output, hidden_dropout_prob)
   attention_output = layer_norm(attention_output + layer_input)
   with tf.variable_scope("ffn_1"):
     with tf.variable_scope("intermediate"):
       intermediate_output = dense_layer_2d(
-          attention_output,
-          intermediate_size,
-          create_initializer(initializer_range),
-          intermediate_act_fn,
-          num_attention_heads=num_attention_heads,
-          name="dense")
+        attention_output,
+        intermediate_size,
+        create_initializer(initializer_range),
+        intermediate_act_fn,
+        num_attention_heads=num_attention_heads,
+        name="dense")
       with tf.variable_scope("output"):
         ffn_output = dense_layer_2d(
-            intermediate_output,
-            hidden_size,
-            create_initializer(initializer_range),
-            None,
-            num_attention_heads=num_attention_heads,
-            name="dense")
+          intermediate_output,
+          hidden_size,
+          create_initializer(initializer_range),
+          None,
+          num_attention_heads=num_attention_heads,
+          name="dense")
       ffn_output = dropout(ffn_output, hidden_dropout_prob)
   ffn_output = layer_norm(ffn_output + attention_output)
   return ffn_output
@@ -1049,8 +1033,8 @@ def transformer_model(input_tensor,
   """
   if hidden_size % num_attention_heads != 0:
     raise ValueError(
-        "The hidden size (%d) is not a multiple of the number of attention "
-        "heads (%d)" % (hidden_size, num_attention_heads))
+      "The hidden size (%d) is not a multiple of the number of attention "
+      "heads (%d)" % (hidden_size, num_attention_heads))
 
   attention_head_size = hidden_size // num_attention_heads
   input_shape = get_shape_list(input_tensor, expected_rank=3)
@@ -1059,8 +1043,8 @@ def transformer_model(input_tensor,
   all_layer_outputs = []
   if input_width != hidden_size:
     prev_output = dense_layer_2d(
-        input_tensor, hidden_size, create_initializer(initializer_range),
-        None, name="embedding_hidden_mapping_in")
+      input_tensor, hidden_size, create_initializer(initializer_range),
+      None, name="embedding_hidden_mapping_in")
   else:
     prev_output = input_tensor
   with tf.variable_scope("transformer", reuse=tf.AUTO_REUSE):
@@ -1072,10 +1056,10 @@ def transformer_model(input_tensor,
           for inner_group_idx in range(inner_group_num):
             with tf.variable_scope("inner_group_%d" % inner_group_idx):
               layer_output = attention_ffn_block(
-                  layer_output, hidden_size, attention_mask,
-                  num_attention_heads, attention_head_size,
-                  attention_probs_dropout_prob, intermediate_size,
-                  intermediate_act_fn, initializer_range, hidden_dropout_prob)
+                layer_output, hidden_size, attention_mask,
+                num_attention_heads, attention_head_size,
+                attention_probs_dropout_prob, intermediate_size,
+                intermediate_act_fn, initializer_range, hidden_dropout_prob)
               prev_output = layer_output
               all_layer_outputs.append(layer_output)
   if do_return_all_layers:
@@ -1169,6 +1153,6 @@ def assert_rank(tensor, expected_rank, name=None):
   if actual_rank not in expected_rank_dict:
     scope_name = tf.get_variable_scope().name
     raise ValueError(
-        "For the tensor `%s` in scope `%s`, the actual rank "
-        "`%d` (shape = %s) is not equal to the expected rank `%s`" %
-        (name, scope_name, actual_rank, str(tensor.shape), str(expected_rank)))
+      "For the tensor `%s` in scope `%s`, the actual rank "
+      "`%d` (shape = %s) is not equal to the expected rank `%s`" %
+      (name, scope_name, actual_rank, str(tensor.shape), str(expected_rank)))
