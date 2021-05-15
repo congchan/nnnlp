@@ -48,13 +48,12 @@ def crf(inputs, tag_indices, num_labels, true_sequence_lengths,
   return per_example_loss, predictions, best_score
 
 
-def softmax(logits, labels, num_classes, mask=None):
-  """ Perform softmax operation
+def softmax(logits, labels, num_classes, mask=None, label_smoothing=0):
+  """ Perform softmax operation with optional label smoothing.
   Args:
     logits: Logits outputs of the network, last dimension should be num_classes, 
         ie.. [batch_size, seq_length ?, num_classes];
     labels: A [batch_size, seq_length ?] tensor represent true label ids.
-    num_classes:
     mask: mask should be the same shape as logits.
   Return:
     per_example_loss, a [batch_size] tensor containing the cross_entropy loss.
@@ -62,21 +61,23 @@ def softmax(logits, labels, num_classes, mask=None):
   # # shape: batch x features_tokens x depth if axis==-1, same shape as logits
   one_hot_labels = tf.one_hot(labels, depth=num_classes, dtype=tf.float32)
   # # shape: batch x features_tokens
-  # per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
-  #     labels=one_hot_labels)
+  if label_smoothing > 0:
+    smooth_positives = 1.0 - label_smoothing
+    smooth_negatives = label_smoothing / num_classes
+    one_hot_labels = one_hot_labels * smooth_positives + smooth_negatives
 
   # An alternative way, less efficient, but allow self-define mask
-  log_probs = tf.nn.log_softmax(logits, axis=-1)  # NOTE same shape as logits
+  log_probs = tf.nn.log_softmax(logits, axis=-1) # NOTE same shape as logits
   # NOTE shape (batch_size, max_seq_len, depth)
   per_token_loss = one_hot_labels * log_probs
 
   if mask is not None and len(per_token_loss.shape.as_list()) > 2:
-      mask = tf.cast(mask, tf.float32)
-      per_token_loss = tf.einsum("BFH,BF->BFH", per_token_loss, mask)
+    mask = tf.cast(mask, tf.float32)
+    per_token_loss = tf.einsum("BTH,BT->BTH", per_token_loss, mask)
 
   per_example_loss = -tf.reduce_sum(per_token_loss, axis=-1)
 
-  probabilities = tf.nn.softmax(logits, axis=-1)  # NOTE same shape as logits
+  probabilities = tf.nn.softmax(logits, axis=-1) # NOTE same shape as logits
   predictions = tf.argmax(probabilities, axis=-1, output_type=tf.int64)
 
   return per_example_loss, predictions
@@ -95,20 +96,20 @@ def am_softmax(logits, labels, num_classes, scale=30, margin=0.35):
     logits = one_hot_labels * (logits - margin) + (1 - one_hot_labels) * logits
     logits *= scale
     # shape: batch x features_tokens
-    per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
-                                                             labels=one_hot_labels)
-    probabilities = tf.nn.softmax(logits, axis=-1)  # NOTE same shape as logits
+    per_token_loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=one_hot_labels)
+    probabilities = tf.nn.softmax(logits, axis=-1) # NOTE same shape as logits
     predictions = tf.argmax(probabilities, axis=-1, output_type=tf.int64)
     return per_token_loss, predictions
 
 
 def contrastive_loss(model1, model2, y, margin):
-  with tf.name_scope("contrastive-loss"):
-    distance = tf.sqrt(tf.reduce_sum(tf.pow(model1 - model2, 2), 1, keepdims=True))
-    similarity = y * tf.square(distance)  # keep the similar label (1) close to each other
-    dissimilarity = (1 - y) * tf.square(tf.maximum((margin - distance), 0))
+  """ Pairwise contrasting two data points representations """
+	with tf.name_scope("contrastive-loss"):
+		distance = tf.sqrt(tf.reduce_sum(tf.pow(model1 - model2, 2), 1, keepdims=True))
+		similarity = y * tf.square(distance) # keep the similar label (1) close to each other
+		dissimilarity = (1 - y) * tf.square(tf.maximum((margin - distance), 0)) 
     # give penalty to dissimilar label if the distance is bigger than margin
-    return tf.reduce_mean(dissimilarity + similarity) / 2
+		return tf.reduce_mean(dissimilarity + similarity) / 2
 
 
 from tensorflow.python.ops import array_ops
